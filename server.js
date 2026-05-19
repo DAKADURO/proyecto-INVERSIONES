@@ -20,6 +20,11 @@ const assets = {
   AAPL: { name: 'Apple Inc.', type: 'Stock', price: 189.50, change: 0.85, high: 191.00, low: 188.20, history: [], sma: [], ema: [], rsi: [], macd: [], signal: [], hist: [] },
   TSLA: { name: 'Tesla Inc.', type: 'Stock', price: 174.80, change: -1.24, high: 178.50, low: 172.90, history: [], sma: [], ema: [], rsi: [], macd: [], signal: [], hist: [] },
   MSFT: { name: 'Microsoft Corp.', type: 'Stock', price: 421.90, change: 1.45, high: 423.80, low: 418.50, history: [], sma: [], ema: [], rsi: [], macd: [], signal: [], hist: [] },
+  FUNO11: { name: 'FIBRA Uno', type: 'FIBRA', price: 25.50, change: 0.12, high: 26.00, low: 25.10, history: [], sma: [], ema: [], rsi: [], macd: [], signal: [], hist: [], suffix: '.MX' },
+  FMTY14: { name: 'FIBRA Monterrey', type: 'FIBRA', price: 11.20, change: -0.44, high: 11.50, low: 11.10, history: [], sma: [], ema: [], rsi: [], macd: [], signal: [], hist: [], suffix: '.MX' },
+  WALMEX: { name: 'Walmart de México', type: 'Stock', price: 68.30, change: 0.55, high: 69.10, low: 67.80, history: [], sma: [], ema: [], rsi: [], macd: [], signal: [], hist: [], suffix: '.MX' },
+  CEMEX: { name: 'Cemex SAB', type: 'Stock', price: 13.40, change: -1.10, high: 13.80, low: 13.20, history: [], sma: [], ema: [], rsi: [], macd: [], signal: [], hist: [], suffix: '.MX' },
+  AMX: { name: 'América Móvil', type: 'Stock', price: 15.80, change: 0.22, high: 16.10, low: 15.60, history: [], sma: [], ema: [], rsi: [], macd: [], signal: [], hist: [], suffix: '.MX' },
   BTC: { name: 'Bitcoin', type: 'Crypto', price: 66850.00, change: 3.12, high: 67200.00, low: 64800.00, history: [], sma: [], ema: [], rsi: [], macd: [], signal: [], hist: [] },
   ETH: { name: 'Ethereum', type: 'Crypto', price: 3480.00, change: 2.54, high: 3510.00, low: 3390.00, history: [], sma: [], ema: [], rsi: [], macd: [], signal: [], hist: [] }
 };
@@ -209,17 +214,19 @@ async function fetchRealCryptoPrices() {
 
 // Alpha Vantage stock quotes fetching (sequential to avoid API rate blocks)
 async function fetchRealStockPrices() {
+  const stocks = Object.keys(assets).filter(t => assets[t].type === 'Stock' || assets[t].type === 'FIBRA');
   if (!smtpSettings.alphaVantageKey) {
     console.log(`[REAL-TIME STOCKS WARNING] No Alpha Vantage API Key configured. Stocks remain in simulated mode.`);
     // Fallback: simulate stock values
-    ['AAPL', 'TSLA', 'MSFT'].forEach(runSimulatedDrift);
+    stocks.forEach(runSimulatedDrift);
     return;
   }
 
-  const stocks = ['AAPL', 'TSLA', 'MSFT'];
   for (const ticker of stocks) {
     try {
-      const url = `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${ticker}&apikey=${smtpSettings.alphaVantageKey}`;
+      const asset = assets[ticker];
+      const symbolQuery = ticker + (asset.suffix || '');
+      const url = `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${symbolQuery}&apikey=${smtpSettings.alphaVantageKey}`;
       const res = await fetch(url);
       const data = await res.json();
       
@@ -234,7 +241,6 @@ async function fetchRealStockPrices() {
         continue;
       }
 
-      const asset = assets[ticker];
       asset.price = parseFloat(quote['05. price']);
       const rawChange = quote['10. change percent'];
       asset.change = rawChange ? parseFloat(rawChange.replace('%', '')) : asset.change;
@@ -255,7 +261,7 @@ async function fetchRealStockPrices() {
 
 function runSimulatedDrift(ticker) {
   const asset = assets[ticker];
-  const volatility = asset.type === 'Crypto' ? 0.004 : 0.0012;
+  const volatility = asset.type === 'Crypto' ? 0.004 : (asset.type === 'FIBRA' ? 0.0006 : 0.0012);
   const changePct = (Math.random() - 0.495) * volatility;
   const priceDiff = asset.price * changePct;
   
@@ -288,7 +294,8 @@ setInterval(async () => {
       await fetchRealStockPrices();
     } else {
       // For intermediate stock ticks, drift simulated based on last real stock price
-      ['AAPL', 'TSLA', 'MSFT'].forEach(runSimulatedDrift);
+      const stocks = Object.keys(assets).filter(t => assets[t].type === 'Stock' || assets[t].type === 'FIBRA');
+      stocks.forEach(runSimulatedDrift);
     }
   } else {
     // All assets simulated

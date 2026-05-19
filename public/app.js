@@ -765,6 +765,18 @@ async function sendTestEmail() {
 // POLLING API & INITIALIZATION
 // =============================================================================
 
+function populateAlertAssetDropdown() {
+  const select = document.getElementById('alertAsset');
+  if (!select) return;
+  select.innerHTML = '';
+  stocksData.forEach(stock => {
+    const opt = document.createElement('option');
+    opt.value = stock.ticker;
+    opt.textContent = `${stock.ticker} - ${stock.name}`;
+    select.appendChild(opt);
+  });
+}
+
 async function fetchStocksData(isInitial = false) {
   try {
     const res = await fetch('/api/stocks');
@@ -785,6 +797,7 @@ async function fetchStocksData(isInitial = false) {
       updateActiveTerminalView();
       
       if (isInitial) {
+        populateAlertAssetDropdown();
         initCharts();
       } else {
         updateCharts();
