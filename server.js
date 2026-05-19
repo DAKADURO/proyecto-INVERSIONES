@@ -58,7 +58,7 @@ let smtpSettings = {
   to: process.env.EMAIL_TO || 'recipient_email@gmail.com',
   mock: process.env.MOCK_EMAIL === 'false' ? false : true,
   // NEW real-time settings
-  marketMode: 'simulated', // 'simulated' or 'real'
+  marketMode: process.env.MARKET_MODE || 'simulated', // 'simulated' or 'real'
   alphaVantageKey: process.env.ALPHA_VANTAGE_KEY || ''
 };
 
@@ -224,6 +224,9 @@ async function fetchRealStockPrices() {
 
   for (const ticker of stocks) {
     try {
+      // Delay 1.5 seconds between queries to strictly respect Alpha Vantage free tier burst limits (1 request/sec)
+      await new Promise(resolve => setTimeout(resolve, 1500));
+
       const asset = assets[ticker];
       const symbolQuery = ticker + (asset.suffix || '');
       const url = `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${symbolQuery}&apikey=${smtpSettings.alphaVantageKey}`;
