@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GBM Invest-Alerts | Terminal de Análisis de Inversión</title>
+  <!-- Google Fonts: Outfit and Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Outfit:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <!-- Chart.js for premium graphics -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- 1. GLOWING TICKER TAPE -->
+  <div class="ticker-tape-container" id="tickerTapeContainer">
+    <div class="ticker-tape" id="tickerTape">
+      <!-- Injected by JS dynamically -->
+      <div class="ticker-item"><i class="fa-solid fa-spinner fa-spin"></i> Cargando Ticker de Mercados...</div>
+    </div>
+  </div>
+
+  <!-- MAIN CONTAINER -->
+  <div class="app-container">
+    
+    <!-- 2. HEADER AREA -->
+    <header class="main-header">
+      <div class="logo-area">
+        <div class="logo-glow"></div>
+        <i class="fa-solid fa-chart-line-up logo-icon"></i>
+        <div>
+          <h1>GBM <span class="accent-text">INVEST-ALERTS</span></h1>
+          <p class="subtitle">Terminal de Análisis Técnico y Notificación SMTP en Tiempo Real</p>
+        </div>
+      </div>
+      <div class="header-badges">
+        <div class="status-badge connected" id="serverStatusBadge">
+          <span class="pulse-dot"></span>
+          SERVER CONNECTED
+        </div>
+        <div class="status-badge" id="smtpModeBadge">
+          <i class="fa-solid fa-envelope-circle-check"></i>
+          EMAIL MOCK MODE
+        </div>
+      </div>
+    </header>
+
+    <!-- 3. MAIN ASSETS GRIDS (TICKER SELECTION CARDS) -->
+    <section class="ticker-cards-row" id="tickerCardsRow">
+      <!-- Injected dynamically by JS -->
+      <div class="ticker-loading-card">
+        <i class="fa-solid fa-circle-nodes fa-spin"></i> Inicializando Tickers...
+      </div>
+    </section>
+
+    <!-- 4. ANALYTICAL WORKSPACE GRID -->
+    <main class="workspace-grid">
+      
+      <!-- LEFT COLUMN: TRADING TERMINAL & CHARTING -->
+      <div class="workspace-left">
+        <div class="glass-card terminal-card">
+          <div class="card-header">
+            <div class="header-title">
+              <span class="active-badge" id="activeAssetTypeBadge">Stock</span>
+              <h2 id="activeAssetTitle">Apple Inc. (AAPL)</h2>
+            </div>
+            <div class="timeframe-selector">
+              <button class="time-btn active" data-time="1D">1D</button>
+              <button class="time-btn" data-time="1W">1W</button>
+              <button class="time-btn" data-time="1M">1M</button>
+            </div>
+          </div>
+
+          <!-- Price Highlight Section -->
+          <div class="price-summary-panel">
+            <div class="price-box">
+              <div class="current-price" id="terminalPrice">$189.50</div>
+              <div class="price-change positive" id="terminalChange">+0.85%</div>
+            </div>
+            <div class="extreme-limits">
+              <div class="limit-val">
+                <span class="label">Mín 24H:</span>
+                <span class="val" id="terminalLow">$188.20</span>
+              </div>
+              <div class="limit-val">
+                <span class="label">Máx 24H:</span>
+                <span class="val" id="terminalHigh">$191.00</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Trading Charts Canvas -->
+          <div class="chart-container">
+            <canvas id="primaryChart"></canvas>
+          </div>
+
+          <div class="sub-chart-container">
+            <canvas id="secondaryChart"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- RIGHT COLUMN: INDICATORS & SUMMARY -->
+      <div class="workspace-right">
+        
+        <!-- Technical Gauges and Sentiments -->
+        <div class="glass-card sentiment-card">
+          <h3 class="card-title"><i class="fa-solid fa-gauge-high"></i> Sentimiento de Mercado</h3>
+          <div class="sentiment-dial-container">
+            <div class="sentiment-dial">
+              <div class="dial-arrow" id="sentimentArrow" style="transform: rotate(0deg);"></div>
+              <div class="sentiment-lbl" id="sentimentText">NEUTRAL</div>
+            </div>
+          </div>
+          <div class="dial-labels">
+            <span>STRONG SELL</span>
+            <span>HOLD</span>
+            <span>STRONG BUY</span>
+          </div>
+        </div>
+
+        <!-- Detail of Indicators -->
+        <div class="glass-card indicators-card">
+          <h3 class="card-title"><i class="fa-solid fa-calculator"></i> Indicadores Técnicos (14 Periodos)</h3>
+          
+          <div class="indicator-item-row">
+            <div class="indicator-meta">
+              <span class="ind-name">SMA (Media Móvil Simple)</span>
+              <span class="ind-value" id="indSma">$189.20</span>
+            </div>
+            <span class="ind-badge neutral" id="badgeSma">Hold</span>
+          </div>
+
+          <div class="indicator-item-row">
+            <div class="indicator-meta">
+              <span class="ind-name">EMA (Media Móvil Exponencial)</span>
+              <span class="ind-value" id="indEma">$189.42</span>
+            </div>
+            <span class="ind-badge bullish" id="badgeEma">Bullish</span>
+          </div>
+
+          <div class="indicator-item-row">
+            <div class="indicator-meta">
+              <span class="ind-name">RSI (Relative Strength Index)</span>
+              <span class="ind-value" id="indRsi">52.4</span>
+            </div>
+            <span class="ind-badge neutral" id="badgeRsi">Neutral</span>
+          </div>
+
+          <div class="indicator-item-row">
+            <div class="indicator-meta">
+              <span class="ind-name">MACD (Histograma)</span>
+              <span class="ind-value" id="indMacd">0.1240</span>
+            </div>
+            <span class="ind-badge bullish" id="badgeMacd">Bullish</span>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- 5. ALERTS & SIMULATOR FOOTER ROW -->
+    <div class="panels-grid">
+      
+      <!-- PANELS LEFT: ALERTS ENGINE -->
+      <div class="glass-card alerts-panel-card">
+        <div class="card-header-plain">
+          <h3><i class="fa-solid fa-bell"></i> Programación de Alertas Inteligentes</h3>
+        </div>
+        
+        <div class="alerts-layout">
+          <!-- Alert Creation Form -->
+          <form class="alert-form" id="alertForm">
+            <div class="form-group">
+              <label for="alertAsset">Activo</label>
+              <select id="alertAsset" required>
+                <option value="AAPL">AAPL - Apple</option>
+                <option value="TSLA">TSLA - Tesla</option>
+                <option value="MSFT">MSFT - Microsoft</option>
+                <option value="BTC">BTC - Bitcoin</option>
+                <option value="ETH">ETH - Ethereum</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label for="alertMetric">Indicador Técnico</label>
+              <select id="alertMetric" required>
+                <option value="price">Precio Actual</option>
+                <option value="rsi">RSI (Relative Strength Index)</option>
+                <option value="sma">SMA (Simple Moving Average)</option>
+                <option value="ema">EMA (Exponential Moving Average)</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label for="alertCondition">Condición</label>
+              <select id="alertCondition" required>
+                <option value="above">Por encima de (&gt;)</option>
+                <option value="below">Por debajo de (&lt;)</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label for="alertThreshold">Límite / Umbral</label>
+              <input type="number" step="any" id="alertThreshold" placeholder="Ej. 190.50 o 30" required>
+            </div>
+
+            <button type="submit" class="glow-btn btn-indigo" id="submitAlertBtn">
+              <i class="fa-solid fa-bell-plus"></i> Crear Alerta
+            </button>
+          </form>
+
+          <!-- Active Alerts List -->
+          <div class="alerts-list-container">
+            <h4>Alertas Activas</h4>
+            <div class="table-scroll">
+              <table class="premium-table" id="alertsTable">
+                <thead>
+                  <tr>
+                    <th>Activo</th>
+                    <th>Indicador</th>
+                    <th>Condición</th>
+                    <th>Umbral</th>
+                    <th>Estado</th>
+                    <th>Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <!-- Injected dynamically -->
+                  <tr>
+                    <td colspan="6" class="empty-table-msg">Buscando alertas del servidor...</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- PANELS RIGHT: INVESTMENT SIMULATOR -->
+      <div class="glass-card simulator-panel-card">
+        <h3 class="card-title"><i class="fa-solid fa-wallet"></i> Simulador de Inversiones (GBM Demo)</h3>
+        
+        <div class="simulator-layout">
+          <!-- Portfolio Stats -->
+          <div class="portfolio-stats">
+            <div class="stat-card">
+              <span class="label">Efectivo USD</span>
+              <span class="value" id="portfolioCash">$10,000.00</span>
+            </div>
+            <div class="stat-card">
+              <span class="label">Valor de Acciones</span>
+              <span class="value" id="portfolioHoldingsValue">$1,895.00</span>
+            </div>
+            <div class="stat-card highlight-card">
+              <span class="label">Valor Total</span>
+              <span class="value" id="portfolioTotal">$11,895.00</span>
+              <span class="yield" id="portfolioYield">+18.95%</span>
+            </div>
+          </div>
+
+          <!-- Quick Trade Action Form -->
+          <div class="simulator-trade-container">
+            <div class="trade-box">
+              <h4>Operar en Directo: <span class="active-ticker-trade" id="activeTradeTicker">AAPL</span></h4>
+              <div class="trade-inputs">
+                <div class="qty-field">
+                  <label for="tradeQty">Cantidad</label>
+                  <input type="number" id="tradeQty" value="1" min="0.0001" step="any">
+                </div>
+                <div class="trade-btns">
+                  <button type="button" class="btn-buy" id="tradeBuyBtn"><i class="fa-solid fa-cart-shopping"></i> Comprar</button>
+                  <button type="button" class="btn-sell" id="tradeSellBtn"><i class="fa-solid fa-tags"></i> Vender</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Holding Table -->
+            <div class="holdings-list">
+              <h4>Tus Posiciones</h4>
+              <div class="table-scroll holdings-table-wrapper">
+                <table class="premium-table" id="holdingsTable">
+                  <thead>
+                    <tr>
+                      <th>Ticker</th>
+                      <th>Cantidad</th>
+                      <th>Precio Act.</th>
+                      <th>Valor USD</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <!-- Injected dynamically -->
+                    <tr>
+                      <td colspan="4" class="empty-table-msg">Sin posiciones abiertas.</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 6. SMTP NOTIFICATION SETTINGS CARD -->
+    <section class="glass-card settings-section-card">
+      <div class="card-header">
+        <h3><i class="fa-solid fa-envelope-open-text"></i> Panel de Configuración SMTP de Alertas</h3>
+        <div class="toggle-container">
+          <label class="switch-lbl" for="mockEmailToggle">Simular Correos (Mock Logs)</label>
+          <label class="switch">
+            <input type="checkbox" id="mockEmailToggle" checked>
+            <span class="slider"></span>
+          </label>
+        </div>
+      </div>
+
+      <form id="settingsForm" class="settings-form">
+        <div class="settings-inputs-grid">
+          <!-- Market Data Mode -->
+          <div class="form-group">
+            <label for="marketMode">Fuente de Datos</label>
+            <select id="marketMode" required>
+              <option value="simulated">Simulado (Fórmula Matemática)</option>
+              <option value="real">Tiempo Real (Crypto Binance / Stocks API)</option>
+            </select>
+          </div>
+          <!-- Alpha Vantage Key -->
+          <div class="form-group">
+            <label for="alphaVantageKey">
+              Alpha Vantage API Key 
+              <a href="https://www.alphavantage.co/support/#api-key" target="_blank" style="color:var(--teal-color); text-decoration:none; font-size:9px;" title="Obtén una clave gratis en 5 segundos para cotizar AAPL, MSFT, TSLA en vivo."><i class="fa-solid fa-key"></i> Obtener Gratis</a>
+            </label>
+            <input type="password" id="alphaVantageKey" placeholder="Ingresa tu clave">
+          </div>
+          <div class="form-group">
+            <label for="smtpHost">Servidor SMTP</label>
+            <input type="text" id="smtpHost" value="smtp.gmail.com" required>
+          </div>
+          <div class="form-group">
+            <label for="smtpPort">Puerto SMTP</label>
+            <input type="number" id="smtpPort" value="587" required>
+          </div>
+          <div class="form-group">
+            <label for="smtpUser">Correo Emisor (SMTP User)</label>
+            <input type="email" id="smtpUser" value="your_email@gmail.com" required>
+          </div>
+          <div class="form-group">
+            <label for="smtpPass">
+              Contraseña de Aplicación 
+              <span class="info-tooltip" title="Para Gmail, necesitas crear una Contraseña de Aplicación de 16 letras tras activar la Verificación de 2 Pasos en tu Cuenta de Google."><i class="fa-solid fa-circle-info"></i></span>
+            </label>
+            <input type="password" id="smtpPass" value="••••••••••••••••" required>
+          </div>
+          <div class="form-group full-width-field">
+            <label for="smtpTo">Destinatario de Alertas (Tu Correo)</label>
+            <input type="email" id="smtpTo" value="your_recipient@gmail.com" required>
+          </div>
+        </div>
+
+        <div class="settings-actions">
+          <button type="submit" class="glow-btn btn-indigo" id="saveSettingsBtn">
+            <i class="fa-solid fa-floppy-disk"></i> Guardar Ajustes
+          </button>
+          <button type="button" class="glow-btn btn-teal" id="testEmailBtn">
+            <i class="fa-solid fa-paper-plane"></i> Enviar Correo de Prueba
+          </button>
+        </div>
+      </form>
+    </section>
+
+    <!-- FOOTER COPYRIGHT -->
+    <footer class="terminal-footer">
+      <p>Terminal GBM Invest-Alerts v1.0.0 | Diseñado con fines de simulación e inversión.</p>
+      <p class="disclaimer">ADVERTENCIA: La inversión en bolsa e instrumentos financieros conlleva riesgos. Los indicadores mostrados son de carácter educativo y simulado.</p>
+    </footer>
+
+  </div>
+
+  <!-- TOAST ALERTS NOTIFIER -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
