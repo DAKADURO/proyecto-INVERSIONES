@@ -10,6 +10,8 @@ let smtpSettings = {};
 
 let primaryChart = null;
 let secondaryChart = null;
+let navChart = null;
+let eventSource = null;
 
 // Baseline values to calculate price flashing
 let previousPrices = {};
@@ -321,6 +323,8 @@ function initCharts() {
   const pricesSlice = stock.history.slice(-points);
   const smaSlice = stock.sma.slice(-points);
   const emaSlice = stock.ema.slice(-points);
+  const bbUpperSlice = stock.bbUpperHistory.slice(-points);
+  const bbLowerSlice = stock.bbLowerHistory.slice(-points);
 
   // Generate labels as timestamps or intervals
   const labels = Array.from({length: points}, (_, i) => `${points - i}p`);
@@ -369,6 +373,25 @@ function initCharts() {
           pointRadius: 0,
           fill: false,
           tension: 0.1
+        },
+        {
+          label: 'Banda Sup',
+          data: bbUpperSlice,
+          borderColor: 'rgba(99, 102, 241, 0.3)',
+          borderWidth: 1,
+          pointRadius: 0,
+          fill: false,
+          tension: 0.25
+        },
+        {
+          label: 'Banda Inf',
+          data: bbLowerSlice,
+          borderColor: 'rgba(99, 102, 241, 0.3)',
+          borderWidth: 1,
+          pointRadius: 0,
+          fill: '-1',
+          backgroundColor: 'rgba(99, 102, 241, 0.05)',
+          tension: 0.25
         }
       ]
     },
@@ -403,6 +426,13 @@ function initCharts() {
       }
     }
   });
+
+  // Apply initial dataset visibility from toggles
+  primaryChart.setDatasetVisibility(1, document.getElementById('toggleSma').checked);
+  primaryChart.setDatasetVisibility(2, document.getElementById('toggleEma').checked);
+  primaryChart.setDatasetVisibility(3, document.getElementById('toggleBb').checked);
+  primaryChart.setDatasetVisibility(4, document.getElementById('toggleBb').checked);
+  primaryChart.update();
 
   // SECONDARY CHART SETUP (MACD Line/Signal/Hist)
   const ctx2 = document.getElementById('secondaryChart').getContext('2d');
@@ -478,6 +508,8 @@ function updateCharts() {
   const pricesSlice = stock.history.slice(-points);
   const smaSlice = stock.sma.slice(-points);
   const emaSlice = stock.ema.slice(-points);
+  const bbUpperSlice = stock.bbUpperHistory.slice(-points);
+  const bbLowerSlice = stock.bbLowerHistory.slice(-points);
   const macdSlice = stock.macdHistory.slice(-points);
   const signalSlice = stock.signalHistory.slice(-points);
   const histSlice = stock.histHistory.slice(-points);
@@ -489,6 +521,8 @@ function updateCharts() {
   primaryChart.data.datasets[0].data = pricesSlice;
   primaryChart.data.datasets[1].data = smaSlice;
   primaryChart.data.datasets[2].data = emaSlice;
+  primaryChart.data.datasets[3].data = bbUpperSlice;
+  primaryChart.data.datasets[4].data = bbLowerSlice;
   primaryChart.update('none'); // silent update (keeps transitions smooth)
 
   // Update secondary chart data
@@ -878,6 +912,27 @@ document.querySelectorAll('.time-btn').forEach(btn => {
   });
 });
 
+// Bind toggles for indicator overlays
+document.getElementById('toggleSma').addEventListener('change', (e) => {
+  if (primaryChart) {
+    primaryChart.setDatasetVisibility(1, e.target.checked);
+    primaryChart.update();
+  }
+});
+document.getElementById('toggleEma').addEventListener('change', (e) => {
+  if (primaryChart) {
+    primaryChart.setDatasetVisibility(2, e.target.checked);
+    primaryChart.update();
+  }
+});
+document.getElementById('toggleBb').addEventListener('change', (e) => {
+  if (primaryChart) {
+    primaryChart.setDatasetVisibility(3, e.target.checked);
+    primaryChart.setDatasetVisibility(4, e.target.checked);
+    primaryChart.update();
+  }
+});
+
 // Bind form submits & events
 alertForm.addEventListener('submit', addAlert);
 document.getElementById('settingsForm').addEventListener('submit', saveSmtpSettings);
@@ -893,21 +948,149 @@ document.getElementById('tradeBuyBtn').addEventListener('click', () => executeSi
 document.getElementById('tradeSellBtn').addEventListener('click', () => executeSimulatedTrade('sell'));
 
 // =============================================================================
+// NAV CHART PIPELINE MANAGER
+// =============================================================================
+
+function initNavChart() {
+  if (!portfolioData || !portfolioData.history) return;
+
+  const ctx = document.getElementById('navChart').getContext('2d');
+  
+  const history = portfolioData.history;
+  const labels = history.map(point => {
+    const d = new Date(point.timestamp);
+    return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}:${d.getSeconds().toString().padStart(2, '0')}`;
+  });
+  const values = history.map(point => point.value);
+
+  const navGradient = ctx.createLinearGradient(0, 0, 0, 150);
+  navGradient.addColorStop(0, 'rgba(16, 185, 129, 0.25)');
+  navGradient.addColorStop(1, 'rgba(16, 185, 129, 0.0)');
+
+  navChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: [
+        {
+          label: 'Valor Neto Portafolio (USD)',
+          data: values,
+          borderColor: 'hsl(150, 84%, 43%)',
+          borderWidth: 2,
+          pointRadius: 1,
+          pointHoverRadius: 4,
+          pointHoverBackgroundColor: '#ffffff',
+          fill: true,
+          backgroundColor: navGradient,
+          tension: 0.15
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: 'hsl(222, 47%, 13%)',
+          titleColor: 'hsl(210, 40%, 98%)',
+          bodyColor: 'hsl(212, 25%, 82%)',
+          padding: 8
+        }
+      },
+      scales: {
+        x: {
+          grid: { display: false },
+          ticks: { color: 'hsl(215, 20%, 65%)', font: { size: 8 }, maxRotation: 0, autoSkip: true, maxTicksLimit: 6 }
+        },
+        y: {
+          grid: { color: 'rgba(255, 255, 255, 0.05)' },
+          ticks: { color: 'hsl(215, 20%, 65%)', font: { size: 8 } }
+        }
+      }
+    }
+  });
+}
+
+function updateNavChart() {
+  if (!portfolioData || !portfolioData.history || !navChart) return;
+
+  const history = portfolioData.history;
+  const labels = history.map(point => {
+    const d = new Date(point.timestamp);
+    return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}:${d.getSeconds().toString().padStart(2, '0')}`;
+  });
+  const values = history.map(point => point.value);
+
+  navChart.data.labels = labels;
+  navChart.data.datasets[0].data = values;
+  navChart.update('none');
+}
+
+// =============================================================================
+// SSE CONNECTION & LIFECYCLE
+// =============================================================================
+
+function connectSSE() {
+  if (eventSource) {
+    eventSource.close();
+  }
+
+  eventSource = new EventSource('/api/stocks/stream');
+
+  eventSource.onmessage = (event) => {
+    try {
+      const data = JSON.parse(event.data);
+      if (data.type === 'update') {
+        // Save prices for flashing calculations
+        if (stocksData && stocksData.length) {
+          stocksData.forEach(s => {
+            previousPrices[s.ticker] = s.price;
+          });
+        }
+
+        const isInitial = (!stocksData || !stocksData.length);
+        stocksData = data.stocks;
+        alertsData = data.alerts;
+        portfolioData = data.portfolio;
+
+        renderTickerTape();
+        renderTickerCards();
+        updateActiveTerminalView();
+        renderAlerts();
+        renderPortfolio();
+
+        if (isInitial) {
+          populateAlertAssetDropdown();
+          initCharts();
+          initNavChart();
+        } else {
+          updateCharts();
+          updateNavChart();
+        }
+
+        // Update badge server
+        document.getElementById('serverStatusBadge').className = 'status-badge connected';
+      }
+    } catch (err) {
+      console.error('[SSE Error Parsing]:', err);
+    }
+  };
+
+  eventSource.onerror = (err) => {
+    console.error('[SSE Connection Error]:', err);
+    document.getElementById('serverStatusBadge').className = 'status-badge';
+    // Attempt reconnect after 5 seconds
+    setTimeout(connectSSE, 5000);
+  };
+}
+
+// =============================================================================
 // INITIAL START
 // =============================================================================
 async function start() {
-  // Initial fetch of data synchronously to avoid empty canvas creation issues
-  await fetchStocksData(true);
-  await fetchAlertsData();
-  await fetchPortfolioData();
   await fetchSettingsData();
-
-  // Setup periodic polling interval schedules (5 seconds as recommended)
-  setInterval(() => {
-    fetchStocksData(false);
-    fetchAlertsData();
-    fetchPortfolioData();
-  }, 5000);
+  connectSSE();
 }
 
 // Window load init

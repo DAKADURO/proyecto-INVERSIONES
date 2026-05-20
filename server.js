@@ -3,6 +3,7 @@ const express = require('express');
 const nodemailer = require('nodemailer');
 const cors = require('cors');
 const path = require('path');
+const fs = require('fs');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -68,8 +69,74 @@ let portfolio = {
   holdings: {
     AAPL: 10,
     BTC: 0.05
-  }
+  },
+  history: [] // Stores historical total portfolio net worth
 };
+
+let sseClients = [];
+
+// =============================================================================
+// FLAT-FILE LOCAL DATABASE UTILITIES
+// =============================================================================
+const DB_PATH = path.join(__dirname, 'db.json');
+
+function loadDatabase() {
+  try {
+    if (fs.existsSync(DB_PATH)) {
+      const raw = fs.readFileSync(DB_PATH, 'utf8');
+      const data = JSON.parse(raw);
+      
+      if (data.alerts) alerts = data.alerts;
+      if (data.smtpSettings) smtpSettings = data.smtpSettings;
+      if (data.portfolio) {
+        portfolio = data.portfolio;
+        if (!portfolio.history) portfolio.history = [];
+      }
+      
+      if (portfolio.history.length === 0) {
+        const now = Date.now();
+        for (let i = 19; i >= 0; i--) {
+          portfolio.history.push({
+            timestamp: now - i * 5000,
+            value: 10000.00
+          });
+        }
+      }
+
+      console.log(`[DATABASE] Loaded successfully from ${DB_PATH}`);
+    } else {
+      console.log(`[DATABASE] No database file found. Seeding defaults.`);
+      if (portfolio.history.length === 0) {
+        const now = Date.now();
+        for (let i = 19; i >= 0; i--) {
+          portfolio.history.push({
+            timestamp: now - i * 5000,
+            value: 10000.00
+          });
+        }
+      }
+      saveDatabase();
+    }
+  } catch (error) {
+    console.error(`[DATABASE ERROR] Failed to load database, using defaults:`, error.message);
+  }
+}
+
+function saveDatabase() {
+  try {
+    const data = {
+      alerts,
+      smtpSettings,
+      portfolio
+    };
+    fs.writeFileSync(DB_PATH, JSON.stringify(data, null, 2), 'utf8');
+  } catch (error) {
+    console.error(`[DATABASE ERROR] Failed to save database:`, error.message);
+  }
+}
+
+// Call on boot to restore persistent states
+loadDatabase();
 
 // =============================================================================
 // TECHNICAL INDICATORS MATHEMATICAL ENGINE
@@ -165,6 +232,39 @@ function calculateMACD(prices) {
   return { macd: macdLine, signal: signalLine, hist };
 }
 
+function calculateStdDev(prices, period = 20) {
+  const stdDevs = [];
+  for (let i = 0; i < prices.length; i++) {
+    if (i < period - 1) {
+      stdDevs.push(null);
+    } else {
+      const slice = prices.slice(i - period + 1, i + 1);
+      const mean = slice.reduce((a, b) => a + b, 0) / period;
+      const variance = slice.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / period;
+      stdDevs.push(Math.sqrt(variance));
+    }
+  }
+  return stdDevs;
+}
+
+function calculateBollingerBands(prices, period = 20, multiplier = 2) {
+  const basis = calculateSMA(prices, period);
+  const stdDevs = calculateStdDev(prices, period);
+  const upper = [];
+  const lower = [];
+  
+  for (let i = 0; i < prices.length; i++) {
+    if (basis[i] === null || stdDevs[i] === null) {
+      upper.push(null);
+      lower.push(null);
+    } else {
+      upper.push(Number((basis[i] + multiplier * stdDevs[i]).toFixed(2)));
+      lower.push(Number((basis[i] - multiplier * stdDevs[i]).toFixed(2)));
+    }
+  }
+  return { basis, upper, lower };
+}
+
 function recalculateAllIndicators(ticker) {
   const asset = assets[ticker];
   asset.sma = calculateSMA(asset.history, 14);
@@ -174,6 +274,10 @@ function recalculateAllIndicators(ticker) {
   asset.macd = macdData.macd;
   asset.signal = macdData.signal;
   asset.hist = macdData.hist;
+  
+  const bbData = calculateBollingerBands(asset.history, 20, 2);
+  asset.bbUpper = bbData.upper;
+  asset.bbLower = bbData.lower;
 }
 
 Object.keys(assets).forEach(recalculateAllIndicators);
@@ -307,6 +411,28 @@ setInterval(async () => {
 
   // Active check alerts criteria
   checkAlertsEngine();
+
+  // Calculate and update portfolio Net Worth history
+  const holdingsValue = Object.keys(portfolio.holdings).reduce((sum, ticker) => {
+    const qty = portfolio.holdings[ticker];
+    const asset = assets[ticker];
+    return sum + qty * (asset ? asset.price : 0);
+  }, 0);
+  const totalWorth = portfolio.balance + holdingsValue;
+
+  portfolio.history = portfolio.history || [];
+  portfolio.history.push({
+    timestamp: Date.now(),
+    value: Number(totalWorth.toFixed(2))
+  });
+
+  // Cap history at 50 points
+  if (portfolio.history.length > 50) {
+    portfolio.history.shift();
+  }
+
+  saveDatabase();
+  broadcastToClients();
 }, 5000);
 
 // =============================================================================
@@ -457,11 +583,13 @@ function checkAlertsEngine() {
         alert.isTriggered = true;
         alert.lastTriggered = Date.now();
         sendEmailNotification(alert, currentValue);
+        saveDatabase();
       }
     } else {
       if (alert.isTriggered) {
         console.log(`[Alert System] Resetting trigger state for alert ${alert.id} (${alert.asset} ${alert.metric}) as it crossed back.`);
         alert.isTriggered = false;
+        saveDatabase();
       }
     }
   });
@@ -470,6 +598,156 @@ function checkAlertsEngine() {
 // =============================================================================
 // API REST ENDPOINTS
 // =============================================================================
+
+function broadcastToClients() {
+  const holdingsValue = Object.keys(portfolio.holdings).reduce((sum, ticker) => {
+    const qty = portfolio.holdings[ticker];
+    const asset = assets[ticker];
+    return sum + qty * (asset ? asset.price : 0);
+  }, 0);
+  const totalWorth = portfolio.balance + holdingsValue;
+
+  const broadcastPayload = {
+    type: 'update',
+    stocks: Object.keys(assets).map(ticker => {
+      const asset = assets[ticker];
+      return {
+        ticker,
+        name: asset.name,
+        type: asset.type,
+        price: asset.price,
+        change: asset.change,
+        high: asset.high,
+        low: asset.low,
+        history: asset.history,
+        indicators: {
+          sma: asset.sma[asset.sma.length - 1],
+          ema: asset.ema[asset.ema.length - 1],
+          rsi: asset.rsi[asset.rsi.length - 1],
+          macd: asset.macd[asset.macd.length - 1],
+          signal: asset.signal[asset.signal.length - 1],
+          hist: asset.hist[asset.hist.length - 1],
+          bbUpper: asset.bbUpper ? asset.bbUpper[asset.bbUpper.length - 1] : null,
+          bbLower: asset.bbLower ? asset.bbLower[asset.bbLower.length - 1] : null
+        },
+        macdHistory: asset.macd,
+        signalHistory: asset.signal,
+        histHistory: asset.hist,
+        bbUpperHistory: asset.bbUpper || [],
+        bbLowerHistory: asset.bbLower || []
+      };
+    }),
+    alerts,
+    portfolio: {
+      cash: portfolio.balance,
+      holdingsValue,
+      totalWorth,
+      gainPct: ((totalWorth - 10000.00) / 10000.00) * 100,
+      holdings: Object.keys(portfolio.holdings).map(ticker => {
+        const qty = portfolio.holdings[ticker];
+        const asset = assets[ticker];
+        return {
+          ticker,
+          qty,
+          currentPrice: asset ? asset.price : 0,
+          totalValue: qty * (asset ? asset.price : 0)
+        };
+      }).filter(h => h.qty > 0),
+      history: portfolio.history
+    }
+  };
+
+  sseClients.forEach(client => {
+    try {
+      client.res.write(`data: ${JSON.stringify(broadcastPayload)}\n\n`);
+    } catch (err) {
+      console.error(`[SSE Broadcast Error] Failed to write to client ${client.id}:`, err.message);
+    }
+  });
+}
+
+app.get('/api/stocks/stream', (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('Content-Encoding', 'none');
+  res.flushHeaders();
+
+  const clientId = Date.now();
+  const newClient = { id: clientId, res };
+  sseClients.push(newClient);
+  console.log(`[SSE] Client connected (${clientId}). Active clients: ${sseClients.length}`);
+
+  // Send initial data immediately
+  const holdingsValue = Object.keys(portfolio.holdings).reduce((sum, ticker) => {
+    const qty = portfolio.holdings[ticker];
+    const asset = assets[ticker];
+    return sum + qty * (asset ? asset.price : 0);
+  }, 0);
+  const totalWorth = portfolio.balance + holdingsValue;
+
+  const initialPayload = {
+    type: 'update',
+    stocks: Object.keys(assets).map(ticker => {
+      const asset = assets[ticker];
+      return {
+        ticker,
+        name: asset.name,
+        type: asset.type,
+        price: asset.price,
+        change: asset.change,
+        high: asset.high,
+        low: asset.low,
+        history: asset.history,
+        indicators: {
+          sma: asset.sma[asset.sma.length - 1],
+          ema: asset.ema[asset.ema.length - 1],
+          rsi: asset.rsi[asset.rsi.length - 1],
+          macd: asset.macd[asset.macd.length - 1],
+          signal: asset.signal[asset.signal.length - 1],
+          hist: asset.hist[asset.hist.length - 1],
+          bbUpper: asset.bbUpper ? asset.bbUpper[asset.bbUpper.length - 1] : null,
+          bbLower: asset.bbLower ? asset.bbLower[asset.bbLower.length - 1] : null
+        },
+        macdHistory: asset.macd,
+        signalHistory: asset.signal,
+        histHistory: asset.hist,
+        bbUpperHistory: asset.bbUpper || [],
+        bbLowerHistory: asset.bbLower || []
+      };
+    }),
+    alerts,
+    portfolio: {
+      cash: portfolio.balance,
+      holdingsValue,
+      totalWorth,
+      gainPct: ((totalWorth - 10000.00) / 10000.00) * 100,
+      holdings: Object.keys(portfolio.holdings).map(ticker => {
+        const qty = portfolio.holdings[ticker];
+        const asset = assets[ticker];
+        return {
+          ticker,
+          qty,
+          currentPrice: asset ? asset.price : 0,
+          totalValue: qty * (asset ? asset.price : 0)
+        };
+      }).filter(h => h.qty > 0),
+      history: portfolio.history
+    }
+  };
+
+  res.write(`data: ${JSON.stringify(initialPayload)}\n\n`);
+
+  const keepAlive = setInterval(() => {
+    res.write(': keepalive\n\n');
+  }, 20000);
+
+  req.on('close', () => {
+    clearInterval(keepAlive);
+    sseClients = sseClients.filter(client => client.id !== clientId);
+    console.log(`[SSE] Client disconnected (${clientId}). Active clients: ${sseClients.length}`);
+  });
+});
 
 app.get('/api/stocks', (req, res) => {
   res.json(Object.keys(assets).map(ticker => {
@@ -489,11 +767,15 @@ app.get('/api/stocks', (req, res) => {
         rsi: asset.rsi[asset.rsi.length - 1],
         macd: asset.macd[asset.macd.length - 1],
         signal: asset.signal[asset.signal.length - 1],
-        hist: asset.hist[asset.hist.length - 1]
+        hist: asset.hist[asset.hist.length - 1],
+        bbUpper: asset.bbUpper ? asset.bbUpper[asset.bbUpper.length - 1] : null,
+        bbLower: asset.bbLower ? asset.bbLower[asset.bbLower.length - 1] : null
       },
       macdHistory: asset.macd,
       signalHistory: asset.signal,
-      histHistory: asset.hist
+      histHistory: asset.hist,
+      bbUpperHistory: asset.bbUpper || [],
+      bbLowerHistory: asset.bbLower || []
     };
   }));
 });
@@ -519,6 +801,8 @@ app.post('/api/alerts', (req, res) => {
   };
 
   alerts.push(newAlert);
+  saveDatabase();
+  broadcastToClients();
   res.status(201).json(newAlert);
 });
 
@@ -527,6 +811,8 @@ app.delete('/api/alerts/:id', (req, res) => {
   const initialLength = alerts.length;
   alerts = alerts.filter(a => a.id !== id);
   if (alerts.length < initialLength) {
+    saveDatabase();
+    broadcastToClients();
     res.json({ success: true, message: 'Alerta eliminada correctamente.' });
   } else {
     res.status(404).json({ error: 'Alerta no encontrada.' });
@@ -538,6 +824,8 @@ app.post('/api/alerts/:id/reset', (req, res) => {
   const alert = alerts.find(a => a.id === id);
   if (alert) {
     alert.isTriggered = false;
+    saveDatabase();
+    broadcastToClients();
     res.json({ success: true, message: 'Alerta reiniciada.', alert });
   } else {
     res.status(404).json({ error: 'Alerta no encontrada.' });
@@ -574,6 +862,8 @@ app.post('/api/settings', (req, res) => {
     smtpSettings.alphaVantageKey = alphaVantageKey;
   }
 
+  saveDatabase();
+  broadcastToClients();
   res.json({ 
     success: true, 
     message: 'Configuración de Servidor y Datos actualizada.', 
@@ -668,6 +958,8 @@ app.post('/api/portfolio/trade', (req, res) => {
     }
   }
 
+  saveDatabase();
+  broadcastToClients();
   res.json({ success: true, message: `Transacción exitosa.`, portfolio });
 });
 

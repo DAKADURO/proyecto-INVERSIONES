@@ -69,6 +69,11 @@
               <h2 id="activeAssetTitle">Apple Inc. (AAPL)</h2>
             </div>
             <div class="timeframe-selector">
+              <div class="chart-toggles">
+                <label class="toggle-lbl"><input type="checkbox" id="toggleSma" checked> <span>SMA</span></label>
+                <label class="toggle-lbl"><input type="checkbox" id="toggleEma" checked> <span>EMA</span></label>
+                <label class="toggle-lbl"><input type="checkbox" id="toggleBb" checked> <span>Bandas Bollinger</span></label>
+              </div>
               <button class="time-btn active" data-time="1D">1D</button>
               <button class="time-btn" data-time="1W">1W</button>
               <button class="time-btn" data-time="1M">1M</button>
@@ -256,6 +261,11 @@
               <span class="value" id="portfolioTotal">$11,895.00</span>
               <span class="yield" id="portfolioYield">+18.95%</span>
             </div>
+          </div>
+
+          <!-- Portfolio NAV Performance Curve -->
+          <div class="portfolio-chart-container">
+            <canvas id="navChart"></canvas>
           </div>
 
           <!-- Quick Trade Action Form -->

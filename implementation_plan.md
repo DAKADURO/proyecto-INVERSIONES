@@ -1,98 +1,93 @@
-# Implementation Plan: GBM Invest-Alerts Analyzer
+# Plan de Implementación: GBM Invest-Alerts Analyzer v2.0
 
-A premium, interactive web platform for investment, stock, and trend analysis that tracks technical indicators, simulates portfolios, and sends gorgeous email alerts when user-defined price/trend thresholds are crossed.
+Proponemos una actualización de arquitectura y funcionalidad para llevar tu terminal de inversiones al siguiente nivel. Estas mejoras solucionan la pérdida de datos ante reinicios, añaden indicadores analíticos profesionales (Bandas de Bollinger), optimizan la red con streaming en tiempo real en vivo y agregan gamificación al simulador con un gráfico histórico de tu rendimiento.
 
 ---
 
 ## User Review Required
 
 > [!IMPORTANT]
-> **Email Alert Dispatching (SMTP Configuration)**
-> To send actual emails, the Node.js backend requires SMTP server credentials (e.g., Gmail App Password, Outlook, Mailgun, or Resend).
-> - We will provide an elegant UI settings panel and a `.env` configuration file to easily enter these.
-> - For security, these credentials will remain 100% local on your machine.
-> - We will also provide a **local console logger/mock email sender** so you can test alert triggers immediately without any configuration.
+> **1. Persistencia de Datos con `db.json` (Base de Datos Local)**
+> Actualmente, la aplicación almacena tus configuraciones de SMTP, tu API Key de Alpha Vantage, tu saldo virtual y tus alertas programadas en la memoria RAM del servidor. Cada vez que el servidor se reinicia o se actualiza, estos datos se pierden.
+> *   **Propuesta**: Implementar un sistema de base de datos ultraligero y plano en `db.json` en la raíz del backend. Al guardar ajustes en la interfaz, comprar/vender activos o crear alertas, se guardarán automáticamente de forma persistente en tu disco.
+> *   **Seguridad**: El archivo `db.json` se añadirá a `.gitignore` para garantizar que tus claves SMTP y API Keys personales nunca se suban públicamente a tu GitHub.
 
 > [!TIP]
-> **Data Feeds & Fallbacks**
-> - Out-of-the-box, the app will include a **high-fidelity market generator** that simulates real-time price fluctuations, trades, and indicator updates for visual excellence.
-> - We will also support fetching real-world data from free Yahoo Finance/CoinGecko scrapers or APIs, giving you the best of both worlds.
+> **2. Superposición de Bandas de Bollinger (Bollinger Bands)**
+> Las Bandas de Bollinger son uno de los indicadores visuales más populares en Wall Street. Consisten en una línea media (SMA de 20 periodos) y dos bandas exteriores basadas en la desviación estándar del precio.
+> *   **Propuesta**: Calcularemos las bandas en el backend y crearemos una capa sombreada ultra-premium y semi-transparente en tu gráfico de Chart.js para visualizar zonas de sobrecompra y sobreventa directamente sobre la línea del precio.
 
 ---
 
-## Proposed Architectural Structure
+## Open Questions
 
-We will build this as a cohesive, lightweight, and robust Node.js application. Serving the frontend files directly from the Express server avoids cross-origin complex setups and makes running it incredibly simple:
+> [!NOTE]
+> **¿Cuáles de estas características te gustaría priorizar para la versión 2.0?**
+> Hemos ordenado el plan con los cuatro módulos activos. Puedes elegir implementar todos (recomendado para la experiencia más completa) o excluir alguno según tus preferencias actuales:
+> 1.  **Persistencia de datos (`db.json`)**: Tus alertas y saldo no se borrarán nunca más al apagar el servidor.
+> 2.  **Bandas de Bollinger en gráfico**: Estética avanzada y análisis visual de volatilidad.
+> 3.  **Real-Time SSE Streaming**: Eliminar el polling de red de 5 segundos e implementar actualización instantánea.
+> 4.  **Gráfico de Rendimiento de Portafolio**: Un nuevo gráfico que dibuja el valor de tu cuenta a lo largo del tiempo.
 
-```mermaid
-graph TD
-    A[Client Browser: Premium UI] -->|Fetch Stock Data & Alerts| B[Express server.js]
-    A -->|Configure SMTP Settings| B
-    B -->|Fetch Stock API / Simulated Feed| C[Data Engine]
-    C -->|Calculate Indicators: RSI, SMA, MACD| B
-    B -->|Check alert conditions| D[Alerts Engine]
-    D -->|If Condition Met| E[Nodemailer Email Dispatcher]
-    E -->|SMTP| F[User Email Inbox]
-```
+---
 
-### Components and Files to Create
+## Proposed Changes
 
-#### 1. [NEW] [package.json](file:///h:/PROYECTO%20GBM/package.json)
-Contains project metadata, scripts, and dependencies:
-- `express`: Fast, unopinionated web framework for API endpoints.
-- `nodemailer`: Library for sending emails easily from Node.js.
-- `dotenv`: Manage environment variables locally.
-- `cors`: Handle cross-origin requests safely.
+Separaremos el desarrollo en componentes específicos del backend y el frontend:
 
-#### 2. [NEW] [server.js](file:///h:/PROYECTO%20GBM/server.js)
-The brain of the system:
-- **Web API Server**: Serves frontend static files and exposes JSON REST endpoints (`/api/stocks`, `/api/alerts`, `/api/settings`, `/api/portfolio`).
-- **Data Engine**: Generates real-time price feeds and calculates technical indicators:
-  - **SMA (Simple Moving Average)**: Identifies support/resistance.
-  - **EMA (Exponential Moving Average)**: Tracks trend momentum.
-  - **RSI (Relative Strength Index)**: Identifies overbought (>70) and oversold (<30) conditions.
-  - **MACD**: Measures trend strength.
-- **Alerts Monitor**: A background interval loop (running every 5 seconds) that checks if active alerts are triggered.
-- **Email Service**: Formats and dispatches stylized HTML emails with modern CSS styling (e.g. green success for bullish breakouts, red warnings for crashes).
+### Backend Architecture
 
-#### 3. [NEW] [public/index.html](file:///h:/PROYECTO%20GBM/public/index.html)
-The structure of our beautiful interface. Key sections:
-- **Glowing Ticker Tape**: Marquee-style live ticker at the top.
-- **Market Dashboard Grid**:
-  - Live charts with timeframes (1D, 1W, 1M).
-  - Selected asset details (Price, change, market cap, high/low, sentiment).
-- **Technical Analysis Gauge**: Visual speedometers showing Buy/Sell/Neutral status.
-- **Alerts Panel**: A form to create custom alerts (Asset, Metric [Price, RSI, SMA], Condition [Greater than, Less than], Threshold) and a list of active alerts.
-- **Simulator & Portfolio Tracker**: Track virtual cash, buys/sells, and current profit/loss.
-- **Settings Card**: Configure email preferences, SMTP, and test connections.
+#### [MODIFY] [server.js](file:///H:/PROYECTO%20GBM/server.js)
+*   **Módulo de Base de Datos (`db.json`)**:
+    *   Añadir funciones para leer y escribir de forma síncrona/asíncrona en un archivo plano en la raíz del proyecto.
+    *   Sembrar datos por defecto si el archivo no existe (saldo de $10,000 USD, alertas iniciales de ejemplo).
+*   **Módulo de Bandas de Bollinger**:
+    *   Añadir algoritmo de desviación estándar y calcular bandas superior e inferior para el historial de precios (periodo predeterminado de 20 ticks).
+    *   Enviar los arreglos `bollingerUpper` y `bollingerLower` dentro del endpoint `/api/stocks`.
+*   **Módulo de Streaming (SSE)**:
+    *   Crear el endpoint `/api/stocks/stream` con cabeceras `text/event-stream` que mantiene una conexión persistente abierta con el navegador y empuja los nuevos ticks del mercado en vivo al instante sin tener que hacer solicitudes HTTP repetitivas.
+*   **Módulo de Historial de Portafolio**:
+    *   Añadir un arreglo `portfolioHistory` en la base de datos de portafolio que almacena el valor neto total de tu cuenta (Efectivo + Valor actual de posiciones abiertas) en cada tick para poder graficar tu curva de rentabilidad.
 
-#### 4. [NEW] [public/style.css](file:///h:/PROYECTO%20GBM/public/style.css)
-An ultra-premium, dark-themed styling sheet using HSL tailored colors:
-- Background: `#0b0f19` (Obsidian Deep Slate).
-- Cards: `rgba(17, 24, 39, 0.7)` with `backdrop-filter: blur(12px)` and subtle glowing borders.
-- Alerts/Gradients: Elegant purple, teal, emerald, and ruby accents.
-- Responsive, modern grid systems with flexible layouts.
-- Micro-animations for button hovers, status dots, and live price flashes (green for up, red for down).
+---
 
-#### 5. [NEW] [public/app.js](file:///h:/PROYECTO%20GBM/public/app.js)
-The frontend controller:
-- Connects to backend API endpoints.
-- Renders highly responsive and beautiful multi-line charts using **Chart.js** (including customized grid lines, gradient fills, and tooltips).
-- Handles user interactions (submitting alerts, buying/selling simulated assets, shifting timeframes, modifying SMTP setup).
-- Performs client-side updates such as color-flashing elements when prices shift.
+### Frontend Components
 
-#### 6. [NEW] [.env.example](file:///h:/PROYECTO%20GBM/.env.example) and [.env](file:///h:/PROYECTO%20GBM/.env)
-Standard template for storing the port, mock mode, and SMTP credentials.
+#### [MODIFY] [public/index.html](file:///H:/PROYECTO%20GBM/public/index.html)
+*   **Panel de Gráfico Superior**:
+    *   Agregar botones selectores visuales para activar/desactivar la visualización de indicadores individuales sobre el gráfico (SMA, EMA, Bandas de Bollinger).
+*   **Panel de Portafolio / Simulador**:
+    *   Crear una pestaña o contenedor colapsable que aloje un tercer gráfico premium de Chart.js dedicado a mostrar la evolución histórica del valor neto de tu dinero (curva NAV).
+
+#### [MODIFY] [public/style.css](file:///H:/PROYECTO%20GBM/public/style.css)
+*   Crear las clases de transición y diseño para los botones selectores del gráfico.
+*   Dar formato y dimensiones fluidas al nuevo gráfico de portafolio histórico.
+
+#### [MODIFY] [public/app.js](file:///H:/PROYECTO%20GBM/public/app.js)
+*   **Conexión SSE**:
+    *   Reemplazar el `setInterval` de 5 segundos de stocks por un objeto `new EventSource('/api/stocks/stream')`.
+    *   Escuchar los eventos entrantes en tiempo real para actualizar la marquesina, las tarjetas y los terminales de forma instantánea.
+*   **Actualización de Gráfico con Bollinger**:
+    *   Agregar los datasets de Bollinger Upper y Bollinger Lower a Chart.js, configurando la propiedad `fill: '+1'` o similar para pintar un canal sombreado degradado translúcido entre ambas bandas.
+*   **Controladores del Gráfico de Rendimiento**:
+    *   Inicializar y actualizar de forma dinámica el tercer gráfico con la cronología de rentabilidad enviada por el servidor.
+
+#### [MODIFY] [.gitignore](file:///H:/PROYECTO%20GBM/.gitignore)
+*   Añadir `db.json` para proteger tus claves locales de ser expuestas en repositorios públicos.
 
 ---
 
 ## Verification Plan
 
-### Automated & Manual Verification
-1. **Interactive UI Walkthrough**: We will launch the application and open the dashboard in a browser.
-2. **Real-time Price Engine Verification**: Check if prices are updating smoothly, tickers are moving, and indicators are calculating correctly.
-3. **Alert Triggering Test**: Create an alert close to the current price (e.g., alert if price is greater than `$current_price + 1`) and watch the alert trigger.
-4. **Email Dispatching Test**:
-   - Check Express logs to verify that when an alert triggers, the email template is generated and logged.
-   - Run a test SMTP dispatch with real credentials to confirm the beautiful HTML email arrives in the inbox.
-5. **Investment Simulation**: Buy and sell assets to ensure portfolio values and yields update dynamically.
+### Automated & Manual Tests
+
+1.  **Verificación de Persistencia**:
+    *   Iniciar el servidor, configurar SMTP reales y crear 3 alertas nuevas en el navegador.
+    *   Reiniciar el proceso del servidor (`node server.js`).
+    *   Refrescar el navegador y verificar que tus alertas SMTP y configuraciones siguen activas exactamente como las dejaste.
+2.  **Verificación Analítica (Visual)**:
+    *   Activar/desactivar las Bandas de Bollinger en la interfaz y confirmar que el canal sombreado e indicadores se renderizan de forma interactiva con gran nitidez estética.
+3.  **Verificación de Conectividad SSE**:
+    *   Inspeccionar la pestaña de "Network" en las herramientas de desarrollo del navegador para asegurar que no hay solicitudes repetidas cada 5 segundos y que el canal persistente SSE está transmitiendo de forma continua.
+4.  **Simulador de Rendimiento**:
+    *   Comprar activos altamente volátiles, ver el precio cambiar, y verificar que el gráfico de portafolio registra el histórico y oscila de acuerdo a tus ganancias/pérdidas totales en vivo.
